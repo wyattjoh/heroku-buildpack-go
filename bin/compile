@@ -104,7 +104,7 @@ then
     mkdir -p "$env_dir"
     env_dir=$(cd "$env_dir/" && pwd)
     ln -sfn $build /app/code
-  for key in CGO_CFLAGS CGO_CPPFLAGS CGO_CXXFLAGS CGO_LDFLAGS GO_LINKER_SYMBOL GO_LINKER_VALUE GO15VENDOREXPERIMENT GOVERSION
+  for key in CGO_CFLAGS CGO_CPPFLAGS CGO_CXXFLAGS CGO_LDFLAGS GO_LINKER_SYMBOL GO_LINKER_VALUE GO15VENDOREXPERIMENT GOVERSION GOVENDOR_IMPORT_PATH
     do
         if [ -f "$env_dir/$key" ]
         then
@@ -128,8 +128,19 @@ elif (test -d "$build/src" && test -n "$(find "$build/src" -type f -name '*.go' 
 then
     ver=${GOVERSION:-$DEFAULT_GO_VERSION}
     TOOL="gb"
+elif test -f "$build/vendor/vendor.json"
+then
+    ver=${GOVERSION:-$DEFAULT_GO_VERSION}
+    TOOL="govendor"
+
+    if [ -z "$GOVENDOR_IMPORT_PATH" ];
+    then
+      warn "GOVENDOR_IMPORT_PATH not specified in environment"
+      warn "must be set to the import path of the package"
+      exit 1
+    fi
 else
-    warn "Godep or GB are required. For instructions:"
+    warn "Godep, GB, or govendor are required. For instructions:"
     warn "https://devcenter.heroku.com/articles/go-support"
     exit 1
 fi
@@ -186,7 +197,7 @@ case $TOOL in
         GOBIN=$build/bin export GOBIN
         GOPATH=$build/.heroku/go export GOPATH
         PATH=$GOROOT/bin:$PATH
-        
+
         p=$GOPATH/src/$name
         mkdir -p $p
         cp -R $build/* $p
@@ -267,6 +278,25 @@ case $TOOL in
         step "Post Compile Cleanup"
         for f in bin/*-heroku; do mv "$f" "${f/-heroku}"; done
         rm -rf pkg
+    ;;
+    govendor)
+        warn ""
+        warn "govendor support is not official"
+        warn ""
+
+        GOBIN=$build/bin export GOBIN
+        GOPATH=$build/.heroku/go export GOPATH
+        PATH=$GOROOT/bin:$PATH
+
+        p=$GOPATH/src/$GOVENDOR_IMPORT_PATH
+        mkdir -p $p
+        cp -R $build/* $p
+
+        unset GIT_DIR # unset git dir or it will mess with goinstall
+        cd $p
+
+        step "Running: go install -v ${FLAGS[@]} ./..."
+        go install -v "${FLAGS[@]}" ./...
     ;;
 esac
 
